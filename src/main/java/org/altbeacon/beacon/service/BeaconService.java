@@ -23,14 +23,10 @@
  */
 package org.altbeacon.beacon.service;
 
-import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothManager;
-import android.bluetooth.le.ScanResult;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.os.AsyncTask;
@@ -40,19 +36,19 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.util.Log;
+
 import org.altbeacon.beacon.Beacon;
 import org.altbeacon.beacon.BeaconManager;
 import org.altbeacon.beacon.BeaconParser;
+import org.altbeacon.beacon.BuildConfig;
+import org.altbeacon.beacon.Region;
 import org.altbeacon.beacon.distance.DistanceCalculator;
 import org.altbeacon.beacon.distance.ModelSpecificDistanceCalculator;
 import org.altbeacon.bluetooth.BluetoothCrashResolver;
-import org.altbeacon.beacon.BuildConfig;
-import org.altbeacon.beacon.Region;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -105,6 +101,18 @@ public class BeaconService extends Service {
      */
 
     private List<Beacon> simulatedScanData = null;
+    private boolean mPaused = false;
+
+    private void pause() {
+        mCycledScanner.pause();
+        mPaused = true;
+    }
+
+    private void resume()
+    {
+        mCycledScanner.resume();
+        mPaused = false;
+    }
 
     /**
      * Class used for the client Binder.  Because we know this service always
@@ -126,6 +134,8 @@ public class BeaconService extends Service {
     public static final int MSG_START_MONITORING = 4;
     public static final int MSG_STOP_MONITORING = 5;
     public static final int MSG_SET_SCAN_PERIODS = 6;
+    public static final int MSG_PAUSE = 7;
+    public static final int MSG_RESUME = 8;
 
     static class IncomingHandler extends Handler {
         private final WeakReference<BeaconService> mService;
@@ -164,6 +174,12 @@ public class BeaconService extends Service {
                     case MSG_SET_SCAN_PERIODS:
                         Log.i(TAG, "set scan intervals received");
                         service.setScanPeriods(startRMData.getScanPeriod(), startRMData.getBetweenScanPeriod(), startRMData.getBackgroundFlag());
+                        break;
+                    case MSG_PAUSE:
+                        service.pause();
+                        break;
+                    case MSG_RESUME:
+                        service.resume();
                         break;
                     default:
                         super.handleMessage(msg);

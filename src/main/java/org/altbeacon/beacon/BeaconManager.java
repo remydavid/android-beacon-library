@@ -95,6 +95,7 @@ import android.util.Log;
 @TargetApi(4)
 public class BeaconManager {
 	private static final String TAG = "BeaconManager";
+    public static final String PAUSE_CALLBACK_BROADCAST_ACTION = "fr.redshift.ibeacon.pauseCallback";
 	private Context mContext;
 	protected static BeaconManager client = null;
 	private Map<BeaconConsumer,ConsumerInfo> consumers = new HashMap<BeaconConsumer,ConsumerInfo>();
@@ -179,6 +180,32 @@ public class BeaconManager {
      */
     public void setBackgroundBetweenScanPeriod(long p) {
         backgroundBetweenScanPeriod = p;
+    }
+
+    public void pause() {
+        if (serviceMessenger == null) {
+            Log.e(TAG,"The IBeaconManager is not bound to the service.  Call iBeaconManager.bind(IBeaconConsumer consumer) and wait for a callback to onIBeaconServiceConnect()");
+            return;
+        }
+        Message msg = Message.obtain(null, BeaconService.MSG_PAUSE, 0, 0);
+        try {
+            serviceMessenger.send(msg);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void resume() {
+        if (serviceMessenger == null) {
+            Log.e(TAG,"The IBeaconManager is not bound to the service.  Call iBeaconManager.bind(IBeaconConsumer consumer) and wait for a callback to onIBeaconServiceConnect()");
+            return;
+        }
+        Message msg = Message.obtain(null, BeaconService.MSG_RESUME, 0, 0);
+        try {
+            serviceMessenger.send(msg);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
     }
 
 	/**

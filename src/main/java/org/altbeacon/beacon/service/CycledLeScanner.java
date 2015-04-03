@@ -15,6 +15,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.provider.AlarmClock;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import org.altbeacon.beacon.BeaconManager;
@@ -50,6 +51,8 @@ public class CycledLeScanner {
     private boolean mBackgroundFlag = false;
     private boolean mRestartNeeded = false;
     private long mWakeupAlarmTime = 0l;
+    private boolean mPaused = false;
+    private boolean mPauseCallback = false;
 
     public CycledLeScanner(Context context, long scanPeriod, long betweenScanPeriod, boolean backgroundFlag, CycledLeScanCallback cycledLeScanCallback, BluetoothCrashResolver crashResolver) {
         mScanPeriod = scanPeriod;
@@ -74,6 +77,16 @@ public class CycledLeScanner {
             }
         }
 
+    }
+
+    public void pause() {
+        mPauseCallback = false;
+        mPaused = true;
+    }
+
+    public void resume()
+    {
+        mPaused = false;
     }
 
     /**
@@ -193,71 +206,69 @@ public class CycledLeScanner {
             if (deferScanIfNeeded()) {
                 return;
             }
-            Log.d(TAG, "starting a new scan cycle");
-            if (mScanning == false || mScanningPaused || mRestartNeeded) {
-                mScanning = true;
-                mScanningPaused = false;
-                try {
-                    if (getBluetoothAdapter() != null) {
-                        if (getBluetoothAdapter().isEnabled()) {
-                            if (mBluetoothCrashResolver != null && mBluetoothCrashResolver.isRecoveryInProgress()) {
-                                Log.w(TAG, "Skipping scan because crash recovery is in progress.");
-                            }
-                            else {
-                                if (mScanningEnabled) {
-                                    try {
-                                        if (mUseAndroidLScanner) {
-                                            if (mRestartNeeded){
-                                                mRestartNeeded = false;
-                                                Log.d(TAG, "restarting a bluetooth le scan");
-                                            }
-                                            else {
+            if(!mPaused) {
+                Log.d(TAG, "starting a new scan cycle");
+                if (mScanning == false || mScanningPaused || mRestartNeeded) {
+                    mScanning = true;
+                    mScanningPaused = false;
+                    try {
+                        if (getBluetoothAdapter() != null) {
+                            if (getBluetoothAdapter().isEnabled()) {
+                                if (mBluetoothCrashResolver != null && mBluetoothCrashResolver.isRecoveryInProgress()) {
+                                    Log.w(TAG, "Skipping scan because crash recovery is in progress.");
+                                } else {
+                                    if (mScanningEnabled) {
+                                        try {
+                                            if (mUseAndroidLScanner) {
+                                                if (mRestartNeeded) {
+                                                    mRestartNeeded = false;
+                                                    Log.d(TAG, "restarting a bluetooth le scan");
+                                                } else {
+                                                    Log.d(TAG, "starting a new bluetooth le scan");
+                                                }
+                                                List<ScanFilter> filters = new ArrayList<ScanFilter>();
+                                                if (mScanner == null) {
+                                                    Log.d(TAG, "Making new Android L scanner");
+                                                    mScanner = getBluetoothAdapter().getBluetoothLeScanner();
+                                                }
+                                                ScanSettings settings;
+
+                                                if (mBackgroundFlag) {
+                                                    Log.d(TAG, "starting scan in SCAN_MODE_LOW_POWER");
+                                                    settings = (new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)).build();
+                                                } else {
+                                                    Log.d(TAG, "starting scan in SCAN_MODE_LOW_LATENCY");
+                                                    settings = (new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)).build();
+
+                                                }
+                                                mScanner.startScan(filters, settings, (android.bluetooth.le.ScanCallback) getNewLeScanCallback());
+
+                                            } else {
                                                 Log.d(TAG, "starting a new bluetooth le scan");
+                                                mRestartNeeded = false;
+                                                getBluetoothAdapter().startLeScan((BluetoothAdapter.LeScanCallback) getLeScanCallback());
                                             }
-                                            List<ScanFilter> filters = new ArrayList<ScanFilter>();
-                                            if (mScanner == null) {
-                                                Log.d(TAG, "Making new Android L scanner");
-                                                mScanner = getBluetoothAdapter().getBluetoothLeScanner();
-                                            }
-                                            ScanSettings settings;
 
-                                            if (mBackgroundFlag) {
-                                                Log.d(TAG, "starting scan in SCAN_MODE_LOW_POWER");
-                                                settings = (new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)).build();
-                                            }
-                                            else {
-                                                Log.d(TAG, "starting scan in SCAN_MODE_LOW_LATENCY");
-                                                settings = (new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)).build();
-
-                                            }
-                                            mScanner.startScan(filters, settings, (android.bluetooth.le.ScanCallback) getNewLeScanCallback());
-
+                                        } catch (Exception e) {
+                                            Log.w("Internal Android exception scanning for beacons: ", e);
                                         }
-                                        else {
-                                            Log.d(TAG, "starting a new bluetooth le scan");
-                                            mRestartNeeded = false;
-                                            getBluetoothAdapter().startLeScan((BluetoothAdapter.LeScanCallback) getLeScanCallback());
-                                        }
-
-                                    }
-                                    catch (Exception e) {
-                                        Log.w("Internal Android exception scanning for beacons: ", e);
+                                    } else {
+                                        BeaconManager.logDebug(TAG, "Scanning unnecessary - no monitoring or ranging active.");
                                     }
                                 }
-                                else {
-                                    BeaconManager.logDebug(TAG, "Scanning unnecessary - no monitoring or ranging active.");
-                                }
+                                mLastScanCycleStartTime = new Date().getTime();
+                            } else {
+                                Log.w(TAG, "Bluetooth is disabled.  Cannot scan for beacons.");
                             }
-                            mLastScanCycleStartTime = new Date().getTime();
-                        } else {
-                            Log.w(TAG, "Bluetooth is disabled.  Cannot scan for beacons.");
                         }
+                    } catch (Exception e) {
+                        Log.e("TAG", "Exception starting bluetooth scan.  Perhaps bluetooth is disabled or unavailable?", e);
                     }
-                } catch (Exception e) {
-                    Log.e("TAG", "Exception starting bluetooth scan.  Perhaps bluetooth is disabled or unavailable?", e);
+                } else {
+                    BeaconManager.logDebug(TAG, "We are already scanning");
                 }
-            } else {
-                BeaconManager.logDebug(TAG, "We are already scanning");
+            }else{
+                Log.d(TAG, "Scan paused, skip");
             }
             mScanCycleStopTime = (new Date().getTime() + mScanPeriod);
             scheduleScanCycleStop();
@@ -328,6 +339,13 @@ public class CycledLeScanner {
                             // With API 18-20
                             getBluetoothAdapter().stopLeScan((BluetoothAdapter.LeScanCallback) getLeScanCallback());
                             mScanningPaused = true;
+                        }
+
+                        if(mPaused && !mPauseCallback)
+                        {
+                            mPauseCallback = true;
+                            Intent pauseCallback = new Intent(BeaconManager.PAUSE_CALLBACK_BROADCAST_ACTION);
+                            LocalBroadcastManager.getInstance(mContext).sendBroadcast(pauseCallback);
                         }
                     }
                     catch (Exception e) {
@@ -418,7 +436,6 @@ public class CycledLeScanner {
         }
         return mBluetoothAdapter;
     }
-
 
     private PendingIntent mWakeUpOperation = null;
     // In case we go into deep sleep, we will set up a wakeup alarm when in the background to kickofƒ
