@@ -1,9 +1,7 @@
 package org.altbeacon.beacon.distance;
 
-import android.util.Log;
+import org.altbeacon.beacon.logging.LogManager;
 
-import org.altbeacon.beacon.BeaconManager;
-import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.InputStreamReader;
@@ -46,47 +44,48 @@ public class DistanceConfigFetcher {
         String currentUrlString = mUrlString;
         int requestCount = 0;
         StringBuilder responseBuilder = new StringBuilder();
-        URL url = null;
+        URL url;
         HttpURLConnection conn = null;
         do {
             if (requestCount != 0) {
-                if (BeaconManager.debug)
-                    Log.d(TAG, "Following redirect from " + mUrlString + " to " + conn.getHeaderField("Location"));
+                LogManager.d(TAG, "Following redirect from %s to %s",
+                        mUrlString, conn.getHeaderField("Location"));
                 currentUrlString = conn.getHeaderField("Location");
             }
             requestCount++;
             mResponseCode = -1;
+            url = null;
             try {
                 url = new URL(currentUrlString);
             } catch (Exception e) {
-                Log.e(TAG, "Can't construct URL from: " + mUrlString);
+                LogManager.e(TAG, "Can't construct URL from: %s", mUrlString);
                 mException = e;
 
             }
             if (url == null) {
-                if (BeaconManager.debug) Log.d(TAG, "URL is null.  Cannot make request");
+                LogManager.d(TAG, "URL is null.  Cannot make request");
             } else {
                 try {
                     conn = (HttpURLConnection) url.openConnection();
                     conn.addRequestProperty("User-Agent", mUserAgentString);
                     mResponseCode = conn.getResponseCode();
-                    if (BeaconManager.debug)
-                        Log.d(TAG, "response code is " + conn.getResponseCode());
+                    LogManager.d(TAG, "response code is %s", conn.getResponseCode());
                 } catch (SecurityException e1) {
-                    Log.w(TAG, "Can't reach sever.  Have you added android.permission.INTERNET to your manifest?", e1);
+                    LogManager.w(e1, TAG, "Can't reach sever.  Have you added android.permission.INTERNET to your manifest?");
                     mException = e1;
                 } catch (FileNotFoundException e2) {
-                    Log.w(TAG, "No data exists at \"+urlString", e2);
+                    LogManager.w(e2, TAG, "No data exists at \"+urlString");
                     mException = e2;
                 } catch (java.io.IOException e3) {
-                    Log.w(TAG, "Can't reach server", e3);
+                    LogManager.w(e3, TAG, "Can't reach server");
                     mException = e3;
                 }
             }
         }
-        while (requestCount < 10 && mResponseCode == HttpURLConnection.HTTP_MOVED_TEMP
-                || mResponseCode == HttpURLConnection.HTTP_MOVED_PERM
-                || mResponseCode == HttpURLConnection.HTTP_SEE_OTHER);
+        while (requestCount < 10 &&
+                (mResponseCode == HttpURLConnection.HTTP_MOVED_TEMP
+                        || mResponseCode == HttpURLConnection.HTTP_MOVED_PERM
+                        || mResponseCode == HttpURLConnection.HTTP_SEE_OTHER));
 
         if (mException == null) {
             try {
@@ -101,7 +100,7 @@ public class DistanceConfigFetcher {
                 mResponse = responseBuilder.toString();
             } catch (Exception e) {
                 mException = e;
-                Log.w(TAG, "error reading beacon data", e);
+                LogManager.w(e, TAG, "error reading beacon data");
             }
         }
 
